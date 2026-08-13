@@ -9,7 +9,7 @@ export default function NotFound() {
       </div>
       <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-50">Page not found</h1>
       <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-        The opportunity or page you're looking for doesn't exist or may have moved.
+        The opportunity or page you&apos;re looking for doesn&apos;t exist or may have moved.
       </p>
       <ButtonLink href="/opportunities" className="mt-6">
         Browse Opportunities

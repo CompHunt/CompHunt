@@ -68,7 +68,7 @@ export default function DashboardPage() {
       <div className="mb-10">
         <h1 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">Your Dashboard</h1>
         <p className="mt-2 text-base text-slate-500 dark:text-slate-400">
-          Everything you've saved, viewed, and matched — all in one place.
+          Everything you&apos;ve saved, viewed, and matched — all in one place.
         </p>
       </div>
 

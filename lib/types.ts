@@ -130,7 +130,7 @@ export interface Opportunity {
   description: string;
   category: Category;
   opportunityTypes: OpportunityType[];
-  tags: Interest[];
+  tags: string[];
   country: string;
   locationType: LocationType;
   cost: CostTier;

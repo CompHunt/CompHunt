@@ -10,7 +10,7 @@ const WEIGHTS = {
 
 function scoreInterests(profile: StudentProfile, opportunity: Opportunity): number {
   if (profile.interests.length === 0) return WEIGHTS.interests * 0.6;
-  const matches = opportunity.tags.filter((tag) => profile.interests.includes(tag)).length;
+  const matches = opportunity.tags.filter((tag) => (profile.interests as string[]).includes(tag)).length;
   if (matches === 0) return WEIGHTS.interests * 0.15;
   const ratio = Math.min(matches / Math.min(profile.interests.length, 3), 1);
   return WEIGHTS.interests * ratio;
