@@ -101,7 +101,7 @@ function countdownUrgency(dateStr) {
 /* ======================================================================
    MATCHING / FIT SCORE
    ====================================================================== */
-const WEIGHTS = { interests: 40, opportunityType: 20, budget: 15, location: 15, grade: 10 };
+const WEIGHTS = { interests: 35, opportunityType: 15, budget: 15, location: 15, grade: 10, country: 10 };
 
 function scoreInterests(profile, o) {
   if (!profile.interests || profile.interests.length === 0) return WEIGHTS.interests * 0.6;
@@ -109,6 +109,15 @@ function scoreInterests(profile, o) {
   if (matches === 0) return WEIGHTS.interests * 0.15;
   const ratio = Math.min(matches / Math.min(profile.interests.length, 3), 1);
   return WEIGHTS.interests * ratio;
+}
+/* Maps the onboarding's broader nationality list onto the dataset's actual country field.
+   International opportunities always score fully — they're open to every nationality by definition. */
+function scoreCountry(profile, o) {
+  if (!profile.country || profile.country === 'Other / International') return WEIGHTS.country;
+  if (o.country === 'International') return WEIGHTS.country;
+  if (o.country === profile.country) return WEIGHTS.country;
+  if (o.locationType === 'Online' || o.locationType === 'Both') return WEIGHTS.country * 0.6;
+  return WEIGHTS.country * 0.25;
 }
 function scoreOpportunityType(profile, o) {
   if (!profile.opportunityTypes || profile.opportunityTypes.length === 0) return WEIGHTS.opportunityType * 0.7;
@@ -138,7 +147,8 @@ function computeFitScore(profile, o) {
     scoreOpportunityType(profile, o) +
     scoreBudget(profile, o) +
     scoreLocation(profile, o) +
-    scoreGrade(profile, o);
+    scoreGrade(profile, o) +
+    scoreCountry(profile, o);
   return Math.round(Math.min(total, 100));
 }
 function getRecommendations(profile, opps, limit) {
@@ -151,7 +161,14 @@ function getRecommendations(profile, opps, limit) {
   return limit ? scored.slice(0, limit) : scored;
 }
 function hasProfileSignal(profile) {
-  return Boolean(profile && ((profile.interests && profile.interests.length) || (profile.opportunityTypes && profile.opportunityTypes.length) || profile.grade || profile.budget || profile.location));
+  return Boolean(profile && ((profile.interests && profile.interests.length) || (profile.opportunityTypes && profile.opportunityTypes.length) || profile.grade || profile.budget || profile.location || profile.country || profile.timeAvailable));
+}
+/* Converts the onboarding's time-availability choice into an hours/week ceiling,
+   reusing the same field opportunities already expose (hoursPerWeek). */
+function maxHoursFromProfile(profile) {
+  if (profile.timeAvailable === '2 hours') return 2;
+  if (profile.timeAvailable === '5 hours') return 5;
+  return null;
 }
 /* Why-this-matches reasons: every reason traces to a real profile/opportunity field comparison, never invented. */
 function getMatchReasons(profile, o) {
@@ -179,7 +196,14 @@ function getMatchReasons(profile, o) {
   }
   if (profile.budget === 'Free only' && o.cost === 'Free') reasons.push("It's free to enter");
   else if (profile.budget === 'Under $100' && (o.cost === 'Free' || o.cost === 'Under $100')) reasons.push('Fits your budget (' + o.cost.toLowerCase() + ')');
-  if (o.country === 'International') reasons.push("It's open internationally");
+  if (profile.country && profile.country === o.country) reasons.push('Based in ' + o.country + ', matching your location');
+  else if (o.country === 'International') reasons.push("It's open internationally");
+  const maxHours = maxHoursFromProfile(profile);
+  if (maxHours != null) {
+    const nums = String(o.hoursPerWeek).match(/\d+/g);
+    const maxFound = nums ? Math.max.apply(null, nums.map(Number)) : null;
+    if (maxFound != null && maxFound <= maxHours) reasons.push('Fits within ' + maxHours + ' hours/week');
+  }
   return reasons;
 }
 /* CompHunt Opportunity Score: CompHunt's own composite assessment, derived only from
@@ -199,9 +223,6 @@ function getReputationAssessment(o) {
     competitiveness: COMPETITIVENESS_LABELS[o.difficulty] || 'Moderate',
     recognition: o.country === 'International' ? 'International' : o.country,
   };
-}
-function hasProfileSignal(profile) {
-  return (profile.interests && profile.interests.length > 0) || (profile.opportunityTypes && profile.opportunityTypes.length > 0);
 }
 
 /* ======================================================================
@@ -915,7 +936,8 @@ const HOME_STATS = [
 function renderHome(container) {
   const profile = Store.getProfile();
   const signal = hasProfileSignal(profile);
-  const recommended = signal ? getRecommendations(profile, opportunities, 6) : [];
+  const eligible = profile.grade ? opportunities.filter(function (o) { return o.gradeLevels.indexOf(profile.grade) !== -1; }) : opportunities;
+  const recommended = signal ? getRecommendations(profile, eligible.length ? eligible : opportunities, 6) : [];
   const featured = opportunities.filter(function (o) { return o.featured; }).slice(0, 6);
   const closingSoon = opportunities
     .filter(function (o) { const d = daysRemaining(o.deadline); return d >= 0 && d <= 21; })
@@ -1245,12 +1267,36 @@ function renderOpportunities(container, params) {
   const countries = Array.from(new Set(opportunities.map(function (o) { return o.country; }))).sort();
   const grades = Array.from(new Set(opportunities.reduce(function (acc, o) { return acc.concat(o.gradeLevels); }, []))).sort(function (a, b) { return a - b; });
 
-  const state = { search: '', searchKeywords: null, maxHoursPerWeek: null, detectedFilters: [], filters: Object.assign({}, DEFAULT_FILTERS) };
+  const state = { search: '', searchKeywords: null, maxHoursPerWeek: null, detectedFilters: [], filters: Object.assign({}, DEFAULT_FILTERS), quizFiltersApplied: [] };
   const categoryParam = params.get('category');
   if (categoryParam) state.filters.category = categoryParam;
 
   const profile = Store.getProfile();
   const signal = hasProfileSignal(profile);
+
+  /* Apply the quiz's objective, eligibility-style answers (grade, free-only budget,
+     online-only preference, weekly time limit) as real filters — not just sort signals —
+     so completing the quiz actually narrows the list. Taste signals (interests, opportunity
+     types) stay sort-only, since one interest shouldn't hide an otherwise-good match. */
+  if (signal && !categoryParam) {
+    if (profile.grade && grades.indexOf(profile.grade) !== -1) {
+      state.filters.grade = profile.grade;
+      state.quizFiltersApplied.push('Grade ' + profile.grade);
+    }
+    if (profile.budget === 'Free only') {
+      state.filters.freeOnly = true;
+      state.quizFiltersApplied.push('Free only');
+    }
+    if (profile.location === 'Online') {
+      state.filters.onlineOnly = true;
+      state.quizFiltersApplied.push('Online');
+    }
+    const quizMaxHours = maxHoursFromProfile(profile);
+    if (quizMaxHours != null) {
+      state.maxHoursPerWeek = quizMaxHours;
+      state.quizFiltersApplied.push('Under ' + quizMaxHours + ' hrs/week');
+    }
+  }
 
   container.innerHTML =
     '<div class="container mt-page">' +
@@ -1271,9 +1317,27 @@ function renderOpportunities(container, params) {
     '<div><p class="results-count" id="results-count"></p><div id="results-grid"></div></div>' +
     '</div></div>';
 
-  document.getElementById('opp-subtitle').textContent = signal
-    ? 'Sorted by how well each opportunity fits your profile.'
-    : 'Browse all opportunities, or take the quiz to get a personalized Match Score.';
+  if (state.quizFiltersApplied.length) {
+    document.getElementById('opp-subtitle').innerHTML =
+      'Filtered and sorted from your quiz answers (' + state.quizFiltersApplied.map(escapeHtml).join(', ') + ') — ' +
+      '<button type="button" class="link-btn" id="clear-quiz-filters" style="display:inline;padding:0;font:inherit">show everything instead</button>.';
+    const clearBtn = document.getElementById('clear-quiz-filters');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        state.filters = Object.assign({}, DEFAULT_FILTERS);
+        state.maxHoursPerWeek = null;
+        state.quizFiltersApplied = [];
+        document.getElementById('opp-subtitle').textContent = signal
+          ? 'Sorted by how well each opportunity fits your profile.'
+          : 'Browse all opportunities, or take the quiz to get a personalized Match Score.';
+        update();
+      });
+    }
+  } else {
+    document.getElementById('opp-subtitle').textContent = signal
+      ? 'Sorted by how well each opportunity fits your profile.'
+      : 'Browse all opportunities, or take the quiz to get a personalized Match Score.';
+  }
 
   function filterPanelHtml() {
     const f = state.filters;
