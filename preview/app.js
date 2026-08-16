@@ -97,6 +97,25 @@ function countdownUrgency(dateStr) {
   if (days <= 30) return 'soon';
   return 'normal';
 }
+/* The "opens" date in timeline[0] is free text ("May 11, 2026", "Fall 2026") and can go
+   stale — if that date has already passed but the deadline hasn't, the opportunity is
+   currently open, not "opening" on a day that's already gone. Best-effort parse; if the
+   text isn't parseable (e.g. "Varies by region") we leave the original label/date alone. */
+function opensStatus(o) {
+  const first = o.timeline && o.timeline[0];
+  if (!first) return null;
+  const parsed = new Date(first.date);
+  const isRealDate = !isNaN(parsed.getTime()) && /\d{4}/.test(first.date);
+  if (isRealDate) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (parsed.getTime() <= today.getTime()) {
+      const days = daysRemaining(o.deadline);
+      return { label: 'Status', value: days >= 0 ? 'Currently open' : 'Applications closed', isStatus: true };
+    }
+  }
+  return { label: first.label, value: first.date, isStatus: false };
+}
 
 /* ======================================================================
    MATCHING / FIT SCORE
@@ -461,7 +480,7 @@ function renderOpportunityCard(o, fitScore) {
     '<div style="display:flex;align-items:center;gap:.4rem;flex-shrink:0">' + renderBookmarkButton(o.slug, 'sm') + '</div>' +
     '</div>' +
     (typeof fitScore === 'number' ? '<div class="card-match-row">' + renderMatchBadge(fitScore, o.slug) + '</div>' : '') +
-    '<a href="#/opportunities/' + encodeURIComponent(o.slug) + '" class="card-title-row">' +
+    '<a href="/opportunities/' + encodeURIComponent(o.slug) + '" class="card-title-row">' +
     renderOrgAvatar(o, 32) +
     '<span><h3>' + escapeHtml(o.title) + '</h3>' +
     '<p class="organizer">' + escapeHtml(o.organizer) + '</p></span>' +
@@ -476,11 +495,16 @@ function renderOpportunityCard(o, fitScore) {
     '<div class="card-footer-row"><span class="opp-score-chip" title="CompHunt Opportunity Score: ' + oppScore + '/100">' + icon('award', '', 13) + ' ' + oppScore + '</span><span>' + icon('clock', '', 13) + ' ' + escapeHtml(o.hoursPerWeek) + '</span></div>' +
     '<p class="eligibility-line">' + icon('graduationCap', '', 14) + '<span>' + escapeHtml(o.eligibility[0]) + '</span></p>' +
     '<div class="card-divider">' +
-    (o.timeline && o.timeline[0] ? '<span class="opens-line">Opens ' + escapeHtml(o.timeline[0].date) + '</span>' : '<span></span>') +
+    (function () {
+      const status = opensStatus(o);
+      if (!status) return '<span></span>';
+      const text = status.isStatus ? status.value : 'Opens ' + status.value;
+      return '<span class="opens-line' + (status.isStatus ? ' opens-line-active' : '') + '">' + escapeHtml(text) + '</span>';
+    })() +
     renderDeadline(o.deadline) +
     '</div>' +
     '<div class="card-actions">' +
-    '<a class="btn btn-primary btn-sm btn-block" href="#/opportunities/' + encodeURIComponent(o.slug) + '">View Details</a>' +
+    '<a class="btn btn-primary btn-sm btn-block" href="/opportunities/' + encodeURIComponent(o.slug) + '">View Details</a>' +
     '<a class="btn btn-outline btn-sm btn-icon" href="' + escapeHtml(o.officialWebsite) + '" target="_blank" rel="noopener noreferrer" aria-label="Official website">' + icon('externalLink') + '</a>' +
     '</div>' +
     '</div>'
@@ -535,24 +559,24 @@ function renderShell() {
   app.innerHTML =
     '<header class="navbar">' +
     '<div class="container navbar-inner">' +
-    '<a href="#/" class="brand"><span class="brand-badge">' + icon('questmark') + '</span><span>CompHunt</span></a>' +
+    '<a href="/" class="brand"><span class="brand-badge">' + icon('questmark') + '</span><span>CompHunt</span></a>' +
     '<nav class="nav-links">' +
-    '<a href="#/opportunities" class="nav-link" data-path="/opportunities">' + icon('compass') + 'Discover</a>' +
-    '<a href="#/deadlines" class="nav-link" data-path="/deadlines">' + icon('radar') + 'Deadlines</a>' +
-    '<a href="#/dashboard" class="nav-link" data-path="/dashboard">' + icon('dashboard') + 'Dashboard</a>' +
+    '<a href="/opportunities" class="nav-link" data-path="/opportunities">' + icon('compass') + 'Discover</a>' +
+    '<a href="/deadlines" class="nav-link" data-path="/deadlines">' + icon('radar') + 'Deadlines</a>' +
+    '<a href="/dashboard" class="nav-link" data-path="/dashboard">' + icon('dashboard') + 'Dashboard</a>' +
     '</nav>' +
     '<div class="nav-actions">' +
     '<button type="button" class="search-trigger" id="search-trigger">' + icon('search') + 'Search<kbd>Ctrl K</kbd></button>' +
     '<button type="button" class="icon-btn" id="theme-toggle" aria-label="Toggle dark mode"></button>' +
-    '<a href="#/onboarding" class="btn btn-primary btn-sm" id="nav-cta" style="display:none">Get Started</a>' +
+    '<a href="/onboarding" class="btn btn-primary btn-sm" id="nav-cta" style="display:none">Get Started</a>' +
     '<button type="button" class="icon-btn hamburger" id="hamburger-btn" aria-label="Toggle menu">' + icon('menu') + '</button>' +
     '</div>' +
     '</div>' +
     '<div class="mobile-menu" id="mobile-menu" hidden>' +
-    '<a href="#/opportunities" class="nav-link">' + icon('compass') + 'Discover</a>' +
-    '<a href="#/deadlines" class="nav-link">' + icon('radar') + 'Deadlines</a>' +
-    '<a href="#/dashboard" class="nav-link">' + icon('dashboard') + 'Dashboard</a>' +
-    '<a href="#/onboarding" class="btn btn-primary btn-sm" style="margin-top:.5rem;justify-content:center">Get Started</a>' +
+    '<a href="/opportunities" class="nav-link">' + icon('compass') + 'Discover</a>' +
+    '<a href="/deadlines" class="nav-link">' + icon('radar') + 'Deadlines</a>' +
+    '<a href="/dashboard" class="nav-link">' + icon('dashboard') + 'Dashboard</a>' +
+    '<a href="/onboarding" class="btn btn-primary btn-sm" style="margin-top:.5rem;justify-content:center">Get Started</a>' +
     '</div>' +
     '</header>' +
     '<main id="app-main"></main>' +
@@ -570,19 +594,19 @@ function renderFooter() {
     '<footer class="footer"><div class="container">' +
     '<div class="footer-grid">' +
     '<div style="grid-column:span 2 / span 2">' +
-    '<a href="#/" class="brand"><span class="brand-badge">' + icon('questmark') + '</span><span>CompHunt</span></a>' +
+    '<a href="/" class="brand"><span class="brand-badge">' + icon('questmark') + '</span><span>CompHunt</span></a>' +
     '<p style="margin-top:.75rem;max-width:20rem;font-size:.875rem;line-height:1.6;color:var(--text-muted)">Helping students discover the competitions, programs, and scholarships that fit who they are.</p>' +
     '</div>' +
     '<div><h4>Explore</h4><ul>' +
-    '<li><a href="#/opportunities">Discover Opportunities</a></li>' +
-    '<li><a href="#/dashboard">Dashboard</a></li>' +
-    '<li><a href="#/onboarding">Take the Quiz</a></li>' +
+    '<li><a href="/opportunities">Discover Opportunities</a></li>' +
+    '<li><a href="/dashboard">Dashboard</a></li>' +
+    '<li><a href="/onboarding">Take the Quiz</a></li>' +
     '</ul></div>' +
     '<div><h4>Categories</h4><ul>' +
-    '<li><a href="#/opportunities?category=STEM">STEM &amp; Research</a></li>' +
-    '<li><a href="#/opportunities?category=Business">Business</a></li>' +
-    '<li><a href="#/opportunities?category=Summer%20Programs">Summer Programs</a></li>' +
-    '<li><a href="#/opportunities?category=Scholarships">Scholarships</a></li>' +
+    '<li><a href="/opportunities?category=STEM">STEM &amp; Research</a></li>' +
+    '<li><a href="/opportunities?category=Business">Business</a></li>' +
+    '<li><a href="/opportunities?category=Summer%20Programs">Summer Programs</a></li>' +
+    '<li><a href="/opportunities?category=Scholarships">Scholarships</a></li>' +
     '</ul></div>' +
     '</div>' +
     '<div class="footer-bottom"><p>© ' + new Date().getFullYear() + ' CompHunt. A student project prototype.</p><p>Created by Reyaansh Agarwal</p></div>' +
@@ -773,7 +797,7 @@ function renderCompareBar() {
     '</div>' +
     '<div class="compare-bar-actions">' +
     '<button type="button" class="btn btn-ghost btn-sm" data-action="compare-clear">Clear</button>' +
-    '<a href="#/compare" class="btn btn-primary btn-sm">Compare (' + items.length + ')' + icon('arrowRight', '', 14) + '</a>' +
+    '<a href="/compare" class="btn btn-primary btn-sm">Compare (' + items.length + ')' + icon('arrowRight', '', 14) + '</a>' +
     '</div></div>';
   bar.querySelectorAll('[data-action="compare-remove"]').forEach(function (btn) {
     btn.addEventListener('click', function () {
@@ -819,9 +843,9 @@ function closeCommandPalette() {
 }
 
 const STATIC_PAGES = [
-  { label: 'Discover Opportunities', sub: 'Browse & filter all programs', href: '#/opportunities', iconName: 'compass' },
-  { label: 'Dashboard', sub: 'Saved, recent, and recommended', href: '#/dashboard', iconName: 'dashboard' },
-  { label: 'Take the Quiz', sub: 'Personalize your recommendations', href: '#/onboarding', iconName: 'sparkles' },
+  { label: 'Discover Opportunities', sub: 'Browse & filter all programs', href: '/opportunities', iconName: 'compass' },
+  { label: 'Dashboard', sub: 'Saved, recent, and recommended', href: '/dashboard', iconName: 'dashboard' },
+  { label: 'Take the Quiz', sub: 'Personalize your recommendations', href: '/onboarding', iconName: 'sparkles' },
 ];
 
 /* Organizer avatar: shows the real official logo (fetched from Wikipedia) when we have
@@ -868,7 +892,7 @@ function renderCommandResults(query) {
       })
       .slice(0, 8)
       .map(function (o) {
-        return { label: o.title, sub: o.category + ' · ' + o.organizer, href: '#/opportunities/' + encodeURIComponent(o.slug), iconName: 'search', org: o };
+        return { label: o.title, sub: o.category + ' · ' + o.organizer, href: '/opportunities/' + encodeURIComponent(o.slug), iconName: 'search', org: o };
       });
     results = pages.concat(opps);
   }
@@ -952,8 +976,8 @@ function renderHome(container) {
     '<h1>Find competitions <span class="gradient-text">worth your time.</span></h1>' +
     '<p class="subtitle">Discover opportunities matched to your interests, goals, schedule and eligibility — not just another endless list.</p>' +
     '<div class="hero-actions">' +
-    '<a href="#/onboarding" class="btn btn-primary btn-lg">Find My Competitions' + icon('arrowRight') + '</a>' +
-    '<a href="#/opportunities" class="btn btn-outline btn-lg">Explore All Competitions</a>' +
+    '<a href="/onboarding" class="btn btn-primary btn-lg">Find My Competitions' + icon('arrowRight') + '</a>' +
+    '<a href="/opportunities" class="btn btn-outline btn-lg">Explore All Competitions</a>' +
     '</div>' +
     '<p class="hero-note">Free to use. No account needed to get started.</p>' +
     '</div></section>' +
@@ -978,13 +1002,13 @@ function renderHome(container) {
       ? '<section class="section section-subtle"><div class="container">' +
         '<div class="section-top-row"><div><h2 style="font-size:1.9rem;font-weight:800;letter-spacing:-.02em">Best matches for you</h2>' +
         '<p style="margin-top:.75rem;color:var(--text-muted);max-width:34rem">Ranked by your Match Score, based on the profile you gave us.</p></div>' +
-        '<a href="#/opportunities" class="btn btn-outline">View all ' + opportunities.length + icon('arrowRight') + '</a></div>' +
+        '<a href="/opportunities" class="btn btn-outline">View all ' + opportunities.length + icon('arrowRight') + '</a></div>' +
         renderCardsGrid(recommended, true, true) +
         '</div></section>'
       : '<section class="section section-subtle"><div class="container">' +
         '<div class="section-top-row"><div><h2 style="font-size:1.9rem;font-weight:800;letter-spacing:-.02em">Featured competitions</h2>' +
         '<p style="margin-top:.75rem;color:var(--text-muted);max-width:34rem">A sample of the highest-rated, real programs already in CompHunt.</p></div>' +
-        '<a href="#/opportunities" class="btn btn-outline">View all ' + opportunities.length + icon('arrowRight') + '</a></div>' +
+        '<a href="/opportunities" class="btn btn-outline">View all ' + opportunities.length + icon('arrowRight') + '</a></div>' +
         renderCardsGrid(featured, false, true) +
         '</div></section>') +
 
@@ -1003,7 +1027,7 @@ function renderHome(container) {
       ? '<section class="section section-subtle"><div class="container">' +
         '<div class="section-top-row"><div><h2 style="font-size:1.5rem;font-weight:800;letter-spacing:-.01em">⚡ Closing soon</h2>' +
         '<p style="margin-top:.5rem;color:var(--text-muted)">Deadlines within the next three weeks.</p></div>' +
-        '<a href="#/deadlines" class="btn btn-outline">Deadline Radar' + icon('arrowRight') + '</a></div>' +
+        '<a href="/deadlines" class="btn btn-outline">Deadline Radar' + icon('arrowRight') + '</a></div>' +
         renderCardsGrid(closingSoon, false, true) +
         '</div></section>'
       : '') +
@@ -1069,7 +1093,7 @@ function renderOnboarding(container) {
 
   document.getElementById('ob-skip-all').addEventListener('click', function (e) {
     e.preventDefault();
-    location.hash = '#/opportunities';
+    navigate('/opportunities');
   });
 
   function optionGrid(options, selected, fieldSetter, colsClass) {
@@ -1189,7 +1213,7 @@ function renderOnboarding(container) {
   function goNext() {
     if (state.step === STEP_TITLES.length - 1) {
       Store.updateProfile(Object.assign({}, state.draft, { onboardingComplete: true }));
-      location.hash = '#/opportunities';
+      navigate('/opportunities');
     } else {
       state.step += 1;
       renderStep();
@@ -1617,7 +1641,7 @@ function renderDetail(container, slug) {
 
   container.innerHTML =
     '<div class="container mt-page" style="max-width:72rem">' +
-    '<a href="#/opportunities" class="detail-back">' + icon('arrowLeft') + 'All opportunities</a>' +
+    '<a href="/opportunities" class="detail-back">' + icon('arrowLeft') + 'All opportunities</a>' +
     '<div class="detail-layout">' +
     '<div class="detail-main">' +
     '<div class="card detail-header-card">' +
@@ -1662,9 +1686,11 @@ function renderDetail(container, slug) {
     '<aside class="detail-sidebar">' +
     '<div class="card quick-facts">' +
     '<h3>Quick facts</h3><dl>' +
-    (o.timeline && o.timeline[0]
-      ? '<div class="fact-row"><dt>' + icon('sparkles') + ' ' + escapeHtml(o.timeline[0].label) + '</dt><dd>' + escapeHtml(o.timeline[0].date) + '</dd></div>'
-      : '') +
+    (function () {
+      const status = opensStatus(o);
+      if (!status) return '';
+      return '<div class="fact-row' + (status.isStatus ? ' fact-row-status' : '') + '"><dt>' + icon('sparkles') + ' ' + escapeHtml(status.label) + '</dt><dd>' + escapeHtml(status.value) + '</dd></div>';
+    })() +
     '<div class="fact-row"><dt>' + icon('calendar') + ' Deadline</dt><dd>' + formatDate(o.deadline) + '</dd></div>' +
     '<div class="fact-row"><dt>Countdown</dt><dd>' + renderDeadline(o.deadline) + '</dd></div>' +
     '<div class="fact-row"><dt>' + icon('banknote') + ' Cost</dt><dd>' + escapeHtml(o.cost) + '</dd></div>' +
@@ -1709,7 +1735,7 @@ function renderCompare(container) {
       '<div class="container mt-page">' +
       '<div class="page-header"><h1>Compare Competitions</h1><p>Select 2–4 opportunities to compare them side by side.</p></div>' +
       renderEmptyState('columns', 'Nothing to compare yet', 'Browse opportunities and check the compare box on any card — it appears in the top-left corner.',
-        '<a href="#/opportunities" class="btn btn-primary">Browse Opportunities</a>') +
+        '<a href="/opportunities" class="btn btn-primary">Browse Opportunities</a>') +
       '</div>';
     return;
   }
@@ -1741,7 +1767,7 @@ function renderCompare(container) {
     '<thead><tr><th class="compare-row-label"></th>' +
     items.map(function (o) {
       return '<th><div class="compare-col-head">' + renderBadge(o.category, categoryTone(o.category)) +
-        '<a href="#/opportunities/' + encodeURIComponent(o.slug) + '"><strong>' + escapeHtml(truncate(o.title, 42)) + '</strong></a>' +
+        '<a href="/opportunities/' + encodeURIComponent(o.slug) + '"><strong>' + escapeHtml(truncate(o.title, 42)) + '</strong></a>' +
         '<span>' + escapeHtml(o.organizer) + '</span>' +
         '<button type="button" class="btn btn-ghost btn-sm" data-action="compare-table-remove" data-slug="' + escapeHtml(o.slug) + '">Remove</button>' +
         '</div></th>';
@@ -1794,7 +1820,7 @@ function renderDeadlineRadar(container) {
       '<div class="radar-list">' +
       items.slice(0, 30).map(function (o) {
         return (
-          '<a href="#/opportunities/' + encodeURIComponent(o.slug) + '" class="radar-item radar-' + tone + '">' +
+          '<a href="/opportunities/' + encodeURIComponent(o.slug) + '" class="radar-item radar-' + tone + '">' +
           '<div class="radar-item-main">' + renderBadge(o.category, categoryTone(o.category)) +
           '<span class="radar-item-title">' + escapeHtml(o.title) + '</span></div>' +
           '<div class="radar-item-meta">' +
@@ -1825,7 +1851,7 @@ function renderProfileSummaryCard(profile, signal) {
     return (
       '<div class="card profile-summary-card empty">' +
       '<div><h3>My Profile</h3><p>Take the quick quiz so CompHunt can calculate real Match Scores for you.</p></div>' +
-      '<a href="#/onboarding" class="btn btn-primary btn-sm">' + icon('sparkles', '', 14) + 'Take the quiz</a>' +
+      '<a href="/onboarding" class="btn btn-primary btn-sm">' + icon('sparkles', '', 14) + 'Take the quiz</a>' +
       '</div>'
     );
   }
@@ -1838,7 +1864,7 @@ function renderProfileSummaryCard(profile, signal) {
   return (
     '<div class="card profile-summary-card">' +
     '<div><h3>My Profile</h3><div class="profile-chip-row">' + chips.map(function (c) { return '<span class="profile-chip">' + escapeHtml(c) + '</span>'; }).join('') + '</div></div>' +
-    '<a href="#/onboarding" class="btn btn-outline btn-sm">Edit</a>' +
+    '<a href="/onboarding" class="btn btn-outline btn-sm">Edit</a>' +
     '</div>'
   );
 }
@@ -1869,7 +1895,7 @@ function renderDashboard(container) {
         const urgency = countdownUrgency(o.deadline);
         const tone = urgency === 'urgent' ? 'red' : urgency === 'soon' ? 'amber' : 'neutral';
         return (
-          '<li><a href="#/opportunities/' + encodeURIComponent(o.slug) + '">' +
+          '<li><a href="/opportunities/' + encodeURIComponent(o.slug) + '">' +
           '<div style="min-width:0"><p class="dl-title">' + escapeHtml(o.title) + '</p><p class="dl-date">' + formatDate(o.deadline) + '</p></div>' +
           '<span class="badge badge-' + tone + '">' + icon('clock', '', 12) + countdownLabel(o.deadline) + '</span>' +
           '</a></li>'
@@ -1886,7 +1912,7 @@ function renderDashboard(container) {
   });
 
   const pipelineHtml = pipeline.length === 0
-    ? renderEmptyState('layers', 'Your pipeline is empty', 'Bookmark an opportunity to add it here, then move it through Saved → Considering → Applying → Submitted → Results.', '<a href="#/opportunities" class="btn btn-outline btn-sm">Browse opportunities</a>')
+    ? renderEmptyState('layers', 'Your pipeline is empty', 'Bookmark an opportunity to add it here, then move it through Saved → Considering → Applying → Submitted → Results.', '<a href="/opportunities" class="btn btn-outline btn-sm">Browse opportunities</a>')
     : '<div class="pipeline-board">' +
       PIPELINE_STAGES.map(function (stage) {
         const items = byStatus[stage];
@@ -1897,7 +1923,7 @@ function renderDashboard(container) {
           items.map(function (o) {
             return (
               '<div class="pipeline-card">' +
-              '<a href="#/opportunities/' + encodeURIComponent(o.slug) + '">' + renderOrgAvatar(o, 24) + '<span>' + escapeHtml(truncate(o.title, 34)) + '</span></a>' +
+              '<a href="/opportunities/' + encodeURIComponent(o.slug) + '">' + renderOrgAvatar(o, 24) + '<span>' + escapeHtml(truncate(o.title, 34)) + '</span></a>' +
               '<div class="pipeline-card-meta"><span class="radar-days">' + escapeHtml(countdownLabel(o.deadline)) + '</span>' +
               '<select class="pipeline-status-select" data-action="pipeline-status" data-slug="' + escapeHtml(o.slug) + '">' +
               PIPELINE_STAGES.map(function (s) { return '<option value="' + s + '"' + (s === stage ? ' selected' : '') + '>' + s + '</option>'; }).join('') +
@@ -1928,14 +1954,14 @@ function renderDashboard(container) {
 
     '<section class="dashboard-section">' +
     sectionHeader('Recommended For You', signal ? 'Matched to your interests, budget, and availability.' : 'Take the quiz to unlock personalized Match Scores.') +
-    (!signal ? '<div style="margin-bottom:1.25rem"><a href="#/onboarding" class="btn btn-outline btn-sm">' + icon('sparkles') + 'Take the quiz</a></div>' : '') +
+    (!signal ? '<div style="margin-bottom:1.25rem"><a href="/onboarding" class="btn btn-outline btn-sm">' + icon('sparkles') + 'Take the quiz</a></div>' : '') +
     renderCardsGrid(recommended, signal, true) +
     '</section>' +
 
     '<section class="dashboard-section">' +
     sectionHeader('Saved Opportunities', "Everything you've bookmarked.") +
     (savedOpportunities.length === 0
-      ? renderEmptyState('bookmark', 'Nothing saved yet', 'Tap the bookmark icon on any opportunity to save it for later.', '<a href="#/opportunities" class="btn btn-outline btn-sm">Browse opportunities</a>')
+      ? renderEmptyState('bookmark', 'Nothing saved yet', 'Tap the bookmark icon on any opportunity to save it for later.', '<a href="/opportunities" class="btn btn-outline btn-sm">Browse opportunities</a>')
       : renderCardsGrid(savedOpportunities, false, true)) +
     '</section>' +
 
@@ -1964,20 +1990,28 @@ function renderNotFound(container) {
     '<div class="icon-wrap" style="width:4rem;height:4rem;margin:0 auto 1.25rem">' + icon('compass', '', 32) + '</div>' +
     '<h1 style="font-size:1.5rem;font-weight:600">Page not found</h1>' +
     '<p style="margin-top:.5rem;color:var(--text-muted)">The opportunity or page you\'re looking for doesn\'t exist or may have moved.</p>' +
-    '<a href="#/opportunities" class="btn btn-primary" style="margin-top:1.5rem">Browse Opportunities</a>' +
+    '<a href="/opportunities" class="btn btn-primary" style="margin-top:1.5rem">Browse Opportunities</a>' +
     '</div>';
 }
 
 /* ======================================================================
    ROUTER
    ====================================================================== */
-function parseHash() {
-  let hash = location.hash.slice(1) || '/';
-  const qIdx = hash.indexOf('?');
-  let path = hash, query = '';
-  if (qIdx !== -1) { path = hash.slice(0, qIdx); query = hash.slice(qIdx + 1); }
+function parseCurrentPath() {
+  let path = location.pathname || '/';
   if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
-  return { path: path, params: new URLSearchParams(query) };
+  return { path: path, params: new URLSearchParams(location.search) };
+}
+/* Real-path client-side navigation via the History API (no # fragment), so links are
+   crawlable, shareable, and produce real per-page URLs. navigate() pushes a new entry
+   and re-runs the router; browser back/forward is handled by the popstate listener. */
+function navigate(path) {
+  if (location.pathname + location.search === path || location.pathname === path) {
+    router();
+    return;
+  }
+  history.pushState(null, '', path);
+  router();
 }
 
 function updateNavActiveStates(path) {
@@ -1988,7 +2022,7 @@ function updateNavActiveStates(path) {
 }
 
 function router() {
-  const parsed = parseHash();
+  const parsed = parseCurrentPath();
   const path = parsed.path;
   const params = parsed.params;
   window.scrollTo(0, 0);
@@ -2020,7 +2054,17 @@ function router() {
   updateNavActiveStates(path);
 }
 
-window.addEventListener('hashchange', router);
+window.addEventListener('popstate', router);
+/* Intercept clicks on internal links so navigation stays client-side (no full page
+   reload) even though URLs are now real paths rather than # fragments. External links,
+   new-tab/modifier clicks, and download links are left to the browser as normal. */
+document.addEventListener('click', function (e) {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const link = e.target.closest('a[href^="/"]');
+  if (!link || link.target === '_blank' || link.hasAttribute('download')) return;
+  e.preventDefault();
+  navigate(link.getAttribute('href'));
+});
 window.addEventListener('DOMContentLoaded', function () {
   renderShell();
   router();

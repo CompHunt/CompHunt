@@ -12,6 +12,13 @@ while ($http.IsListening) {
         if ($reqPath -eq "/") { $reqPath = "/index.html" }
         $filePath = Join-Path $root ($reqPath.TrimStart("/"))
 
+        # Mirrors vercel.json's SPA rewrite: any path that isn't a real static file
+        # falls back to index.html so the client-side router can handle real paths
+        # like /opportunities/some-slug (no # fragment) on direct load/refresh.
+        if (-not (Test-Path $filePath -PathType Leaf)) {
+            $filePath = Join-Path $root "index.html"
+        }
+
         if (Test-Path $filePath -PathType Leaf) {
             $bytes = [System.IO.File]::ReadAllBytes($filePath)
             $ext = [System.IO.Path]::GetExtension($filePath).ToLower()
